@@ -1,0 +1,15 @@
+# Binaries
+*.exe
+*.out
+*.test
+
+# Vendor dependencies
+vendor/
+
+# IDE/editor files
+.idea/
+*.swp
+*.vscode/
+
+# Logs and temporary files
+*.log
