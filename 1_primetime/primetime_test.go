@@ -8,8 +8,6 @@ import (
 )
 
 	func TestServer(t *testing.T) {
-		t.Parallel()
-
 		var testCases = map[string]struct {
 			request  string
 			response string
@@ -52,7 +50,6 @@ import (
 		if err != nil {
 			t.Fatal("Error starting server:", err)
 		}
-
 		defer listener.Close()
 
 		for _, tt := range testCases {
@@ -60,13 +57,9 @@ import (
 			if err != nil {
 				t.Fatal("Error connecting to server:", err)
 			}
-
 			defer conn.Close()
 
-			_, err = conn.Write([]byte(tt.request + "\n"))
-			if err != nil {
-				t.Fatal("Error writing request to server:", err)
-			}
+			conn.Write([]byte(tt.request + "\n"))
 
 			scanner := bufio.NewScanner(conn)
 			if !scanner.Scan() {
