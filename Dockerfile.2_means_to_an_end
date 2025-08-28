@@ -1,0 +1,13 @@
+# Build
+FROM golang:1.25 as build
+WORKDIR /app
+COPY 2_means_to_an_end/ ./
+COPY server ../server
+RUN CGO_ENABLED=0 go build -o means_to_an_end .
+
+# Run
+FROM scratch
+WORKDIR /app
+COPY --from=build /app/means_to_an_end .
+EXPOSE 8080
+CMD ["./means_to_an_end"]
