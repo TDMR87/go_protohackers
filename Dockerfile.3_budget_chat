@@ -1,0 +1,13 @@
+# Build
+FROM golang:1.25 as build
+WORKDIR /app
+COPY 3_budget_chat/ ./
+COPY server ../server
+RUN CGO_ENABLED=0 go build -o budget_chat .
+
+# Run
+FROM scratch
+WORKDIR /app
+COPY --from=build /app/budget_chat .
+EXPOSE 8080
+CMD ["./budget_chat"]
