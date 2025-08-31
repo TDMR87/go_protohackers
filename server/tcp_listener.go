@@ -5,7 +5,7 @@ import (
 	"net"
 )
 
-func StartListener(addr string, handle func(net.Conn)) (net.Listener, error) {
+func StartTcpListener(addr string, handle func(net.Conn)) (net.Listener, error) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Println("Error starting server:", err)
