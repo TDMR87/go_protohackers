@@ -8,7 +8,7 @@ import (
 )
 
 func TestConnectToChatRoom(t *testing.T) {
-	listener, err := server.StartListener(":0", handle)
+	listener, err := server.StartTcpListener(":0", handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -37,7 +37,7 @@ func TestConnectToChatRoom(t *testing.T) {
 }
 
 func TestTooLongUsername(t *testing.T) {
-	listener, err := server.StartListener(":0", handle)
+	listener, err := server.StartTcpListener(":0", handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -61,7 +61,7 @@ func TestTooLongUsername(t *testing.T) {
 }
 
 func TestTooShortUsername(t *testing.T) {
-	listener, err := server.StartListener(":0", handle)
+	listener, err := server.StartTcpListener(":0", handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -86,7 +86,7 @@ func TestTooShortUsername(t *testing.T) {
 }
 
 func TestAsciiUsername(t *testing.T) {
-	listener, err := server.StartListener(":0", handle)
+	listener, err := server.StartTcpListener(":0", handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}

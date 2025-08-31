@@ -24,7 +24,7 @@ func TestServer(t *testing.T) {
 		},
 	}
 
-	listener, err := server.StartListener(":0", handle)
+	listener, err := server.StartTcpListener(":0", handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}

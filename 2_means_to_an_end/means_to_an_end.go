@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	server.StartListener(":8080", handle)
+	server.StartTcpListener(":8080", handle)
 	select {}
 }
 
