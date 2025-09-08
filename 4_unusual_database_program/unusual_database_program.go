@@ -22,21 +22,26 @@ func handle(conn *net.UDPConn, buf []byte, n int, clientAddr *net.UDPAddr, err e
 
 	msg := string(buf[:n])
 	
-	if isInsert(msg) {
+	if msg == "version" {
+		response := db.Retrieve(msg)
+		conn.WriteToUDP([]byte(msg + "=" + response), clientAddr)
+	} else if ContainsEqualsSign(msg) {
 		key, val := parse(msg)
-		db.Set(key, val)
-	} else if msg == "version" {
-		response  := msg + "=" + "Ken's Key-Value Store 1.0"
-		conn.WriteToUDP([]byte(response), clientAddr)	
+		if key == "version" {
+			return
+		}
+		db.Insert(key, val)
 	} else {
-		val := db.Get(msg)
+		val := db.Retrieve(msg)
 		response := msg + "=" + val
 		conn.WriteToUDP([]byte(response), clientAddr)	
 	}
 }
 
 var db = Database{
-	Store: make(map[string]string),
+    Store: map[string]string{
+        "version": "6.6.6",
+    },
 }
 
 type Database struct {
@@ -44,13 +49,17 @@ type Database struct {
 	Lock sync.RWMutex
 }
 
-func (db *Database) Get(key string) string {
+func (db *Database) Retrieve(key string) string {
 	db.Lock.Lock()
 	defer db.Lock.Unlock()
-	return db.Store[key]
+	if db.Store[key] != "" {
+		return db.Store[key]
+	} else {
+		return ""
+	}
 }
 
-func (db *Database) Set(key string, val string) {
+func (db *Database) Insert(key string, val string) {
 	db.Lock.Lock()
 	defer db.Lock.Unlock()
 	db.Store[key] = val
@@ -64,7 +73,7 @@ func parse(msg string) (key string, val string) {
 	return
 }
 
-func isInsert(msg string) bool {
+func ContainsEqualsSign(msg string) bool {
 	for _, r := range msg {
 		if r == '=' {
 			return true

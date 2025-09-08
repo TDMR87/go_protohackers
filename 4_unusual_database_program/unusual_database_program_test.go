@@ -25,9 +25,6 @@ func TestServer(t *testing.T) {
     // Insert
     conn.Write([]byte("message=hello"))
 	time.Sleep(50 * time.Millisecond)
-	if len(db.Store) != 1 {
-		t.Fatalf("Expected 1 value in db, got %v", len(db.Store))
-	}
 
 	// Get
 	conn.Write([]byte("message"))
@@ -36,6 +33,82 @@ func TestServer(t *testing.T) {
 	response := string(buf[:n])
 	if response != "message=hello" {
 		t.Fatalf("Expected 'message=hello', got %s", response)
+	}
+}
+
+func TestNonExistentKey(t *testing.T) {
+	listener, _ := server.StartUdpListener(":8080", handle)
+	defer listener.Close()
+
+	serverAddr, err := net.ResolveUDPAddr("udp", listener.LocalAddr().String())
+    if err != nil {
+        t.Fatal("Connecting to the server failed", err)
+    }
+
+	conn, err := net.DialUDP("udp", nil, serverAddr)
+    if err != nil {
+        t.Fatal("Connecting to the server failed", err)
+    }
+    defer conn.Close()
+
+	conn.Write([]byte("foobar"))
+	buf := make([]byte, 1000)
+	n, _, _ := conn.ReadFromUDP(buf)
+	response := string(buf[:n])
+	if response != "foobar=" {
+		t.Fatalf("Expected empty string, got %s", response)
+	}
+}
+
+func TestRetrieveVersion(t *testing.T) {
+	listener, _ := server.StartUdpListener(":8080", handle)
+	defer listener.Close()
+
+	serverAddr, err := net.ResolveUDPAddr("udp", listener.LocalAddr().String())
+    if err != nil {
+        t.Fatal("Connecting to the server failed", err)
+    }
+
+	conn, err := net.DialUDP("udp", nil, serverAddr)
+    if err != nil {
+        t.Fatal("Connecting to the server failed", err)
+    }
+    defer conn.Close()
+
+	conn.Write([]byte("version"))
+	buf := make([]byte, 1000)
+	n, _, _ := conn.ReadFromUDP(buf)
+	response := string(buf[:n])
+	if response != "version=6.6.6" {
+		t.Fatalf("Expected version=6.6.6, got %s", response)
+	}
+}
+
+func TestInsertVersion(t *testing.T) {
+	listener, _ := server.StartUdpListener(":8080", handle)
+	defer listener.Close()
+
+	serverAddr, err := net.ResolveUDPAddr("udp", listener.LocalAddr().String())
+    if err != nil {
+        t.Fatal("Connecting to the server failed", err)
+    }
+
+	conn, err := net.DialUDP("udp", nil, serverAddr)
+    if err != nil {
+        t.Fatal("Connecting to the server failed", err)
+    }
+    defer conn.Close()
+
+	// Try to modify the version
+	conn.Write([]byte("version=9.9.9"))
+
+	// Get the version
+	conn.Write([]byte("version"))
+	buf := make([]byte, 1000)
+	n, _, _ := conn.ReadFromUDP(buf)
+	response := string(buf[:n])
+	if response != "6.6.6" {
+		t.Fatalf("Expected 6.6.6, got %s", response)
 	}
 }
 
