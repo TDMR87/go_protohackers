@@ -5,7 +5,7 @@ import (
 	"net"
 )
 
-func StartUdpListener(addr string, handle func (*net.UDPConn, []byte, int, *net.UDPAddr, error)) (conn *net.UDPConn, err error) {
+func StartUdpListener(addr string, handle func (*net.UDPConn, []byte, int, *net.UDPAddr)) (conn *net.UDPConn, err error) {
 	urpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		log.Println("Error starting server:", err)
@@ -22,10 +22,17 @@ func StartUdpListener(addr string, handle func (*net.UDPConn, []byte, int, *net.
 		for {
 			buf := make([]byte, 1000)
 			n, addr, err := conn.ReadFromUDP(buf)
-			if n == len(buf) {
-				continue // Messages must be under 1000 bytes
+
+			if err != nil {
+				log.Println(err.Error())
+				continue
 			}
-			handle(conn, buf, n, addr, err)
+
+			if n == len(buf) {
+				continue // Messages of 1000 bytes or larger are ignored
+			}
+
+			handle(conn, buf, n, addr)
 		}
 	}()
 

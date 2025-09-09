@@ -107,8 +107,8 @@ func TestInsertVersion(t *testing.T) {
 	buf := make([]byte, 1000)
 	n, _, _ := conn.ReadFromUDP(buf)
 	response := string(buf[:n])
-	if response != "6.6.6" {
-		t.Fatalf("Expected 6.6.6, got %s", response)
+	if response != "version=6.6.6" {
+		t.Fatalf("Expected version=6.6.6, got %s", response)
 	}
 }
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"TDMR87/protohackers/server"
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -14,23 +13,18 @@ func main() {
 	select {}
 }
 
-func handle(conn *net.UDPConn, buf []byte, n int, clientAddr *net.UDPAddr, err error) {
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-
+func handle(conn *net.UDPConn, buf []byte, n int, clientAddr *net.UDPAddr) {
 	msg := string(buf[:n])
 	
 	if msg == "version" {
-		response := db.Retrieve(msg)
-		conn.WriteToUDP([]byte(msg + "=" + response), clientAddr)
+		val := db.Retrieve(msg)
+		response := msg + "=" + val
+		conn.WriteToUDP([]byte(response), clientAddr)
 	} else if ContainsEqualsSign(msg) {
 		key, val := parse(msg)
-		if key == "version" {
-			return
+		if key != "version" {
+			db.Insert(key, val)
 		}
-		db.Insert(key, val)
 	} else {
 		val := db.Retrieve(msg)
 		response := msg + "=" + val
