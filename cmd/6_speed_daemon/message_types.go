@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 type Message interface {
@@ -153,9 +154,20 @@ func (disp IAmDispatcher) Encode() []byte {
 	return result
 }
 
-func DecodeError(data []byte) (Error, error) {
-	if len(data) > (Error{}).Size() || data[0] != (Error{}).Type() {
-		return Error{}, errors.New("invalid Error message")
+func (WantHeartBeat) Decode(data []byte) (WantHeartBeat, error) {
+	if len(data) != (WantHeartBeat{}).Size() || data[0] != (WantHeartBeat{}).Type() {
+		return WantHeartBeat{}, errors.New("invalid WantHeartBeat message")
+	}
+	interval := binary.BigEndian.Uint32(data[1:])
+	return WantHeartBeat{Interval: interval}, nil
+}
+
+func (Error) Decode(data []byte) (Error, error) {
+	if len(data) > (Error{}).Size() {
+		return Error{}, fmt.Errorf("the given data (%#x bytes) is too large to be Error", len(data))
+	}
+	if data[0] != (Error{}).Type() {
+		return Error{}, fmt.Errorf("the given payload's type (%#x) is not Error", data[0])
 	}
 	length := int(data[1])
 	if len(data[2:]) != length {
@@ -164,7 +176,7 @@ func DecodeError(data []byte) (Error, error) {
 	return Error{Msg: string(data[2 : 2+length])}, nil
 }
 
-func DecodePlate(data []byte) (Plate, error) {
+func (p Plate) Decode(data []byte) (Plate, error) {
 	if len(data) < (Plate{}).Size() || data[0] != (Plate{}).Type() {
 		return Plate{}, errors.New("invalid data for a Plate")
 	}
@@ -219,15 +231,7 @@ func DecodeTicket(data []byte) (Ticket, error) {
 	}, nil
 }
 
-func DecodeWantHeartBeat(data []byte) (WantHeartBeat, error) {
-	if len(data) != (WantHeartBeat{}).Size() || data[0] != (WantHeartBeat{}).Type() {
-		return WantHeartBeat{}, errors.New("invalid WantHeartBeat message")
-	}
-	interval := binary.BigEndian.Uint32(data[1:])
-	return WantHeartBeat{Interval: interval}, nil
-}
-
-func DecodeHeartBeat(data []byte) (HeartBeat, error) {
+func (HeartBeat) Decode(data []byte) (HeartBeat, error) {
 	if len(data) != (HeartBeat{}).Size() || data[0] != (HeartBeat{}).Type() {
 		return HeartBeat{}, errors.New("invalid HeartBeat message")
 	}

@@ -256,7 +256,7 @@ func TestDecodeError(t *testing.T) {
 	}
 
 	for name, tt := range tests {
-		got, err := DecodeError(tt.data)
+		got, err := Error{}.Decode(tt.data)
 		if tt.wantErr {
 			if err == nil {
 				t.Fatalf("%s: expected error, got nil", name)
@@ -306,7 +306,7 @@ func TestDecodePlate(t *testing.T) {
 			want: Plate{Plate: "", Timestamp: 123456},
 		},
 	} {
-		got, err := DecodePlate(tt.data)
+		got, err := Plate{}.Decode(tt.data)
 		if tt.wantErr {
 			if err == nil {
 				t.Fatalf("[%s] expected error, got none", name)
@@ -364,7 +364,7 @@ func TestDecodeWantHeartBeat(t *testing.T) {
 	data[0] = (WantHeartBeat{}).Type()
 	binary.BigEndian.PutUint32(data[1:], 30)
 
-	got, err := DecodeWantHeartBeat(data)
+	got, err := WantHeartBeat{}.Decode(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestDecodeWantHeartBeat(t *testing.T) {
 
 func TestDecodeHeartBeat(t *testing.T) {
 	data := []byte{HeartBeat{}.Type()}
-	_, err := DecodeHeartBeat(data)
+	_, err := HeartBeat{}.Decode(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

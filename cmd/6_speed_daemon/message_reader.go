@@ -22,7 +22,7 @@ func NewMessageReader(r io.Reader) *MessageReader {
 
 	reader.messageDecoders[WantHeartBeat{}.Type()] =
 		func(reader *MessageReader) (any, bool, error) {
-			return decodeMessageFromBytes(DecodeWantHeartBeat, WantHeartBeat{}.Size(), reader)
+			return decodeMessageFromBytes(WantHeartBeat{}.Decode, WantHeartBeat{}.Size(), reader)
 		}
 
 	return &reader

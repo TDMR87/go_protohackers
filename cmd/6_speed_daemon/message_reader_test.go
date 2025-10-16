@@ -25,7 +25,7 @@ func TestMessageReader_WantHeartBeat(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		conn := bytes.NewBuffer(tt.byteStream) // simulate a TCP connection buffer
+		conn := bytes.NewBuffer(tt.byteStream)
 		reader := NewMessageReader(conn)
 
 		for _, expected := range tt.expectedInterval {
