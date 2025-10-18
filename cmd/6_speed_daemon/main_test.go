@@ -184,8 +184,8 @@ func Test_ClientMustBeACamera_ToSendPlate(t *testing.T) {
 	buf := make([]byte, Error{}.Size())
 	n, _ := conn.Read(buf)
 	response, _ := Error{}.Decode(buf[:n])
-	if response.Msg != "Client sent a plate but is not identified as a camera" {
-		t.Fatalf("expected error message 'Client sent a plate but is not identified as a camera', got '%s'", response.Msg)
+	if response.Msg != "Client must be identified as a camera to send a plate" {
+		t.Fatalf("expected error message 'Client must be identified as a camera to send a plate', got '%s'", response.Msg)
 	}
 }
 
