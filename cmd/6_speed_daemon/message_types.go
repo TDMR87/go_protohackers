@@ -73,7 +73,7 @@ func (e Error) Encode() (bytes []byte, err error) {
 }
 
 func (p Plate) Encode() (bytes []byte, err error) {
-	if len(p.Plate) > (Plate{}).Size() {
+	if len(p.Plate) > 255 {
 		return nil, errors.New("plate cannot exceed 255 bytes")
 	}
 	messageType := Plate{}.Type()
@@ -81,6 +81,7 @@ func (p Plate) Encode() (bytes []byte, err error) {
 	timestamp := make([]byte, 4)
 	binary.BigEndian.PutUint32(timestamp, p.Timestamp)
 	result := []byte{messageType}
+	result = append(result, byte(len(plate)))
 	result = append(result, plate...)
 	result = append(result, timestamp...)
 	return result, nil
@@ -238,7 +239,7 @@ func (HeartBeat) Decode(data []byte) (HeartBeat, error) {
 	return HeartBeat{}, nil
 }
 
-func DecodeIAmCamera(data []byte) (IAmCamera, error) {
+func (IAmCamera) Decode(data []byte) (IAmCamera, error) {
 	if len(data) != (IAmCamera{}).Size() || data[0] != (IAmCamera{}).Type() {
 		return IAmCamera{}, errors.New("invalid IAmCamera message")
 	}

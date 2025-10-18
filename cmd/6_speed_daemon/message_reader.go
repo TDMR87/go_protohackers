@@ -5,53 +5,53 @@ import (
 	"io"
 )
 
-type MessageDecoderFunc func(*MessageReader) (any, bool, error)
-
 type MessageReader struct {
-	reader          io.Reader
-	buf             []byte
-	messageDecoders map[byte]MessageDecoderFunc
+	reader io.Reader
+	buf    []byte
 }
 
 func NewMessageReader(r io.Reader) *MessageReader {
 	reader := MessageReader{
-		reader:          r,
-		buf:             make([]byte, 0, 4096),
-		messageDecoders: make(map[byte]MessageDecoderFunc),
+		buf:    make([]byte, 0, 4096),
+		reader: r,
 	}
-
-	reader.messageDecoders[WantHeartBeat{}.Type()] =
-		func(reader *MessageReader) (any, bool, error) {
-			return decodeMessageFromBytes(WantHeartBeat{}.Decode, WantHeartBeat{}.Size(), reader)
-		}
 
 	return &reader
 }
 
 // NextMessage reads and returns the next message from the underlying reader (e.g. net.Conn).
-func (f *MessageReader) NextMessage() (msg any, err error) {
+func (reader *MessageReader) NextMessage() (msg any, err error) {
 	for {
-		if len(f.buf) < 1 {
-			err = f.fillBuffer()
+		if len(reader.buf) < 1 {
+			err = reader.fillBuffer()
 			if err != nil {
 				return nil, err
 			}
 		}
 
-		msgType := f.buf[0]
-		decodeMsg, ok := f.messageDecoders[msgType]
+		var msg any
+		var needMoreBytes bool
+		msgType := reader.buf[0]
 
-		if !ok {
-			return nil, fmt.Errorf("unknown message type %#x", msgType)
+		switch msgType {
+			case Plate{}.Type():
+				strSize := int(reader.buf[1])
+				msgSizeInBytes := 2 + strSize + 4 // Type(1 byte) + Length(1 byte) + Plate length (bytes) + Timestamp(4 bytes)
+				msg, needMoreBytes, err = extractMessage(reader, msgSizeInBytes, Plate{}.Decode)
+			case WantHeartBeat{}.Type():
+				msg, needMoreBytes, err = extractMessage(reader, WantHeartBeat{}.Size(), WantHeartBeat{}.Decode)
+			case IAmCamera{}.Type():
+				msg, needMoreBytes, err = extractMessage(reader, IAmCamera{}.Size(), IAmCamera{}.Decode)
+			default:
+				return nil, fmt.Errorf("MessageReader does not support message type %#x", msgType)
 		}
 
-		msg, ok, err := decodeMsg(f)
 		if err != nil {
 			return nil, err
 		}
 
-		if !ok {
-			f.fillBuffer()
+		if needMoreBytes {
+			reader.fillBuffer()
 			continue
 		}
 
@@ -59,28 +59,30 @@ func (f *MessageReader) NextMessage() (msg any, err error) {
 	}
 }
 
-func decodeMessageFromBytes[T any](
-	decoderFunc func(b []byte) (T, error),
-	bytesLen int,
+// extractMessage extracts messages of various types from the reader's buffer.
+func extractMessage[T any](
 	reader *MessageReader,
-) (msg T, ok bool, err error) {
-
+	msgLength int,
+	decoderFunc func(b []byte) (T, error),
+) (msg T, needMoreBytes bool, err error) {
 	var zero T
-	if len(reader.buf) < bytesLen {
-		err = reader.fillBuffer()
-		if err != nil {
-			return zero, false, err
-		}
-		return zero, false, nil
+	if len(reader.buf) < msgLength {
+		return zero, true, nil
 	}
-	msg, err = decoderFunc(reader.buf[:bytesLen])
+
+	// Use the decoder function to extract a message from the buffer
+	// Slice the buffer to the required length for the message
+	msg, err = decoderFunc(reader.buf[:msgLength])
 	if err != nil {
 		return zero, false, err
 	}
-	reader.buf = reader.buf[bytesLen:]
-	return msg, true, nil
+
+	// Remove the extracted bytes from the reader's buffer
+	reader.buf = reader.buf[msgLength:]
+	return msg, false, nil
 }
 
+// fillBuffer reads more data from the underlying reader into the buffer.
 func (f *MessageReader) fillBuffer() error {
 	tempBuf := make([]byte, 512)
 	n, err := f.reader.Read(tempBuf)

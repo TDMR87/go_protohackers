@@ -35,22 +35,24 @@ func TestErrorEncode(t *testing.T) {
 }
 
 func TestPlateEncode(t *testing.T) {
-	bytes, _ := Plate{Plate: "UN1X", Timestamp: 123456}.Encode()
+	plate := "UN1X7777"
 
-	if len(bytes) != 9 {
-		t.Fatalf("Expected a total of %d bytes, got %d bytes", 19, len(bytes))
+	bytes, _ := Plate{Plate: plate, Timestamp: 123456}.Encode()
+
+	if len(bytes) != 14 {
+		t.Fatalf("Expected a total of %d bytes, got %d bytes", 14, len(bytes))
 	}
 	if bytes[0] != (Plate{}).Type() {
 		t.Fatalf("Expected message type to be hex %x, got hex %x", Plate{}.Type(), bytes[0])
 	}
-	if len(bytes[1:]) != 8 {
-		t.Fatalf("Expected payload to have 8 bytes, got %d", len(bytes[1:]))
+	if bytes[1] != 8 {
+		t.Fatalf("Expected the second byte to be 8 (representing the length of the plate string '%s'), got %d", plate, bytes[1])
 	}
-	if string(bytes[1:5]) != "UN1X" {
+	if string(bytes[2:10]) != plate {
 		t.Fatalf("Expected bytes[1:4] to be 'UN1X', got %s", string(bytes[1:4]))
 	}
 
-	timestamp := int(binary.BigEndian.Uint32(bytes[5:]))
+	timestamp := int(binary.BigEndian.Uint32(bytes[10:14]))
 	if timestamp != 123456 {
 		t.Fatalf("Expected bytes[5:] to be '123456', got %d", timestamp)
 	}
@@ -282,8 +284,8 @@ func TestDecodePlate(t *testing.T) {
 		wantErr bool
 	}{
 		"happy path": {
-			data: append(append([]byte{Plate{}.Type(), 4}, []byte("UN1X")...), timestamp...),
-			want: Plate{Plate: "UN1X", Timestamp: 123456},
+			data: append(append([]byte{Plate{}.Type(), 8}, []byte("UN1X7777")...), timestamp...),
+			want: Plate{Plate: "UN1X7777", Timestamp: 123456},
 		},
 		"wrong type": {
 			data:    append([]byte{0x99, 0x00}, timestamp...),
@@ -388,7 +390,7 @@ func TestDecodeIAmCamera(t *testing.T) {
 	binary.BigEndian.PutUint16(data[3:5], 100)
 	binary.BigEndian.PutUint16(data[5:7], 80)
 
-	got, err := DecodeIAmCamera(data)
+	got, err := IAmCamera{}.Decode(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
