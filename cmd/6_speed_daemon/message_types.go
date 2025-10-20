@@ -107,6 +107,7 @@ func (p Ticket) Encode() (bytes []byte, err error) {
 	binary.BigEndian.PutUint32(timestamp2, p.Timestamp2)
 
 	result := []byte{Ticket{}.Type()}
+	result = append(result, byte(len(plate)))
 	result = append(result, plate...)
 	result = append(result, road...)
 	result = append(result, mile1...)
@@ -164,6 +165,9 @@ func (WantHeartBeat) Decode(data []byte) (WantHeartBeat, error) {
 }
 
 func (Error) Decode(data []byte) (Error, error) {
+	if len(data) < 1 {
+		return Error{}, errors.New("no data to decode into Error")
+	}
 	if len(data) > (Error{}).Size() {
 		return Error{}, fmt.Errorf("the given data (%#x bytes) is too large to be Error", len(data))
 	}
@@ -179,7 +183,7 @@ func (Error) Decode(data []byte) (Error, error) {
 
 func (p Plate) Decode(data []byte) (Plate, error) {
 	if len(data) < (Plate{}).Size() || data[0] != (Plate{}).Type() {
-		return Plate{}, errors.New("invalid data for a Plate")
+		return Plate{}, errors.New("invalid type for a Plate")
 	}
 	plateLen := int(data[1])
 	if len(data) < 2+plateLen+4 {
@@ -190,35 +194,33 @@ func (p Plate) Decode(data []byte) (Plate, error) {
 	return Plate{Plate: plate, Timestamp: timestamp}, nil
 }
 
-func DecodeTicket(data []byte) (Ticket, error) {
+func (Ticket) Decode(data []byte) (Ticket, error) {
 	if len(data) < (Ticket{}).Size() || data[0] != (Ticket{}).Type() {
-		return Ticket{}, errors.New("invalid Ticket message")
+		return Ticket{}, errors.New("invalid type for a Ticket message")
 	}
-	data = data[1:] // skip type byte
-
-	if len(data) < 2+2+4+2+4+2 {
-		return Ticket{}, errors.New("data too short for Ticket")
-	}
-
-	// Plate is the remaining length minus fixed fields
-	plateLen := len(data) - (2 + 2 + 4 + 2 + 4 + 2)
-	if plateLen < 0 {
-		return Ticket{}, errors.New("invalid Ticket length")
+	plateLen := int(data[1])
+	if len(data) < 2+plateLen+2+2+4+2+4+2 {
+		return Ticket{}, errors.New("data too short for a Ticket")
 	}
 
-	plate := string(data[:plateLen])
-	offset := plateLen
+	plate := string(data[2 : 2+plateLen])
+	offset := 2 + plateLen
 
 	road := binary.BigEndian.Uint16(data[offset : offset+2])
 	offset += 2
+
 	mile1 := binary.BigEndian.Uint16(data[offset : offset+2])
 	offset += 2
+
 	timestamp1 := binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
+
 	mile2 := binary.BigEndian.Uint16(data[offset : offset+2])
 	offset += 2
+
 	timestamp2 := binary.BigEndian.Uint32(data[offset : offset+4])
 	offset += 4
+
 	speed := binary.BigEndian.Uint16(data[offset : offset+2])
 
 	return Ticket{
@@ -249,17 +251,17 @@ func (IAmCamera) Decode(data []byte) (IAmCamera, error) {
 	return IAmCamera{Road: road, Mile: mile, Limit: limit}, nil
 }
 
-func DecodeIAmDispatcher(data []byte) (IAmDispatcher, error) {
+func (IAmDispatcher) Decode(data []byte) (IAmDispatcher, error) {
 	if len(data) < (IAmDispatcher{}).Size() || data[0] != (IAmDispatcher{}).Type() {
 		return IAmDispatcher{}, errors.New("invalid IAmDispatcher message")
 	}
-	numroads := data[1]
-	if len(data) != int(2+numroads*2) {
+	numRoads := uint8(data[1])
+	if len(data) != int(2+numRoads*2) {
 		return IAmDispatcher{}, errors.New("invalid IAmDispatcher length")
 	}
-	roads := make([]uint16, numroads)
-	for i := 0; i < int(numroads); i++ {
+	roads := make([]uint16, numRoads)
+	for i := uint8(0); i < numRoads; i++ {
 		roads[i] = binary.BigEndian.Uint16(data[2+i*2 : 2+i*2+2])
 	}
-	return IAmDispatcher{Numroads: numroads, Roads: roads}, nil
+	return IAmDispatcher{Numroads: numRoads, Roads: roads}, nil
 }

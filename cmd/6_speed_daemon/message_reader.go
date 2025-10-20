@@ -34,16 +34,20 @@ func (reader *MessageReader) NextMessage() (msg any, err error) {
 		msgType := reader.buf[0]
 
 		switch msgType {
-			case Plate{}.Type():
-				strSize := int(reader.buf[1])
-				msgSizeInBytes := 2 + strSize + 4 // Type(1 byte) + Length(1 byte) + Plate length (bytes) + Timestamp(4 bytes)
-				msg, needMoreBytes, err = extractMessage(reader, msgSizeInBytes, Plate{}.Decode)
-			case WantHeartBeat{}.Type():
-				msg, needMoreBytes, err = extractMessage(reader, WantHeartBeat{}.Size(), WantHeartBeat{}.Decode)
-			case IAmCamera{}.Type():
-				msg, needMoreBytes, err = extractMessage(reader, IAmCamera{}.Size(), IAmCamera{}.Decode)
-			default:
-				return nil, fmt.Errorf("MessageReader does not support message type %#x", msgType)
+		case Plate{}.Type():
+			strSize := int(reader.buf[1])
+			msgSizeInBytes := 2 + strSize + 4 // Type(1 byte) + Length(1 byte) + Plate length (bytes) + Timestamp(4 bytes)
+			msg, needMoreBytes, err = extractMessage(reader, msgSizeInBytes, Plate{}.Decode)
+		case WantHeartBeat{}.Type():
+			msg, needMoreBytes, err = extractMessage(reader, WantHeartBeat{}.Size(), WantHeartBeat{}.Decode)
+		case IAmCamera{}.Type():
+			msg, needMoreBytes, err = extractMessage(reader, IAmCamera{}.Size(), IAmCamera{}.Decode)
+		case IAmDispatcher{}.Type():
+			numRoads := int(reader.buf[1])
+			msgSizeInBytes := 2 + (numRoads * 2) // Type(1 byte) + NumRoads(1 byte) + Roads (2 bytes each)
+			msg, needMoreBytes, err = extractMessage(reader, msgSizeInBytes, IAmDispatcher{}.Decode)
+		default:
+			return nil, fmt.Errorf("MessageReader does not support message type %#x", msgType)
 		}
 
 		if err != nil {

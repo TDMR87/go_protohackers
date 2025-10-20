@@ -78,40 +78,45 @@ func TestTicketEncode(t *testing.T) {
 		Timestamp2: 654321,
 	}.Encode()
 
-	expectedLen := 21 // 1 (msg type) + len(plate) + 2+2+4+2+4+2 = 21
+	expectedLen := 22 // 1 (msg type) + len(plate) + plate string (4 bytes) + 2 + 2 + 4 + 2 + 4 + 2 = 22
 	if len(bytes) != expectedLen {
 		t.Fatalf("Expected %d bytes, got %d", expectedLen, len(bytes))
 	}
 	if bytes[0] != (Ticket{}).Type() {
 		t.Fatalf("Expected message type %x, got %x", Ticket{}.Type(), bytes[0])
 	}
-	if string(bytes[1:5]) != "UN1X" { // Plate
-		t.Fatalf("Expected plate 'UN1X', got '%s'", string(bytes[1:5]))
+	if int(bytes[1]) != 4 { // Plate length
+		t.Fatalf("Expected byte indicating the plate length to be 4, got %d", bytes[1])
 	}
-	road := binary.BigEndian.Uint16(bytes[5:7])
+	if string(bytes[2:6]) != "UN1X" { // Plate
+		t.Fatalf("Expected plate 'UN1X', got '%s'", string(bytes[2:6]))
+	}
+	road := binary.BigEndian.Uint16(bytes[6:8])
 	if road != 66 {
 		t.Fatalf("Expected road 66, got %d", road)
 	}
-	mile1 := binary.BigEndian.Uint16(bytes[7:9])
+	mile1 := binary.BigEndian.Uint16(bytes[8:10])
 	if mile1 != 100 {
 		t.Fatalf("Expected mile1 100, got %d", mile1)
 	}
-	timestamp1 := binary.BigEndian.Uint32(bytes[9:13])
+	timestamp1 := binary.BigEndian.Uint32(bytes[10:14])
 	if timestamp1 != 123456 {
 		t.Fatalf("Expected timestamp1 123456, got %d", timestamp1)
 	}
-	mile2 := binary.BigEndian.Uint16(bytes[13:15])
+	mile2 := binary.BigEndian.Uint16(bytes[14:16])
 	if mile2 != 200 {
 		t.Fatalf("Expected mile2 200, got %d", mile2)
 	}
-	timestamp2 := binary.BigEndian.Uint32(bytes[15:19])
+	timestamp2 := binary.BigEndian.Uint32(bytes[16:20])
 	if timestamp2 != 654321 {
 		t.Fatalf("Expected timestamp2 654321, got %d", timestamp2)
 	}
-	speed := binary.BigEndian.Uint16(bytes[19:21])
+	speed := binary.BigEndian.Uint16(bytes[20:22])
 	if speed != 88 {
 		t.Fatalf("Expected speed 88, got %d", speed)
 	}
+
+	// Test plate exceeding 255 bytes
 	longPlate := make([]byte, 256)
 	for i := range longPlate {
 		longPlate[i] = 'A'
@@ -340,7 +345,8 @@ func TestDecodeTicket(t *testing.T) {
 	speed := make([]byte, 2)
 	binary.BigEndian.PutUint16(speed, 60)
 
-	data := append([]byte{Ticket{}.Type()}, plateBytes...)
+	data := []byte{Ticket{}.Type(), byte(len(plateBytes))}
+	data = append(data, plateBytes...)
 	data = append(data, road...)
 	data = append(data, mile1...)
 	data = append(data, timestamp1...)
@@ -348,7 +354,7 @@ func TestDecodeTicket(t *testing.T) {
 	data = append(data, timestamp2...)
 	data = append(data, speed...)
 
-	got, err := DecodeTicket(data)
+	got, err := Ticket{}.Decode(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -408,7 +414,7 @@ func TestDecodeIAmDispatcher(t *testing.T) {
 		data = append(data, b...)
 	}
 
-	got, err := DecodeIAmDispatcher(data)
+	got, err := IAmDispatcher{}.Decode(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

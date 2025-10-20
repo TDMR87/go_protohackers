@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"log"
 	"net"
 )
@@ -16,9 +17,13 @@ func StartTcpListener(addr string, handle func(net.Conn)) (net.Listener, error) 
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				log.Println("Error accepting connection:", err)
-				continue
-			}
+                // Check if the listener was closed
+                if errors.Is(err, net.ErrClosed) {
+                    return // Exit the goroutine gracefully
+                }
+                log.Println("Error accepting connection:", err)
+                continue
+            }
 
 			go handle(conn)
 		}
