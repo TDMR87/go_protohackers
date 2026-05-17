@@ -7,40 +7,40 @@ import (
 	"time"
 )
 
-var (
-	heartbeatMu      sync.Mutex
-	heartbeatClients = make(map[net.Conn]struct{})
-	dispatchersMu sync.RWMutex
-	dispatchers  = make(map[net.Conn]IAmDispatcher)
-	cameraClientsMu      sync.RWMutex
-	cameraClients = make(map[net.Conn]IAmCamera)
-	snapshotsMu           sync.RWMutex
-	cameraPlateSnapshots = make(map[IAmCamera]Plate)
-	sentTicketsMu sync.Mutex
-	sentTickets   = make(map[string][]uint32)
-	outgoingTicketsMu        sync.Mutex
-	outgoingTickets = make([]Ticket, 0)
-)
+type Server struct {
+	mu                   sync.Mutex
+	heartbeatClients     map[net.Conn]struct{}
+	dispatchers          map[net.Conn]IAmDispatcher
+	cameraClients        map[net.Conn]IAmCamera
+	cameraPlateSnapshots map[Plate]IAmCamera
+	sentTickets          map[string][]uint32
+	outgoingTickets      []Ticket
+}
+
+func NewServer() *Server {
+	return &Server{
+		heartbeatClients:     make(map[net.Conn]struct{}),
+		dispatchers:          make(map[net.Conn]IAmDispatcher),
+		cameraClients:        make(map[net.Conn]IAmCamera),
+		cameraPlateSnapshots: make(map[Plate]IAmCamera),
+		sentTickets:          make(map[string][]uint32),
+	}
+}
 
 func main() {
-	server.StartTcpListener(":8080", handle)
+	s := NewServer()
+	server.StartTcpListener(":8080", s.handle)
 	select {}
 }
 
-func handle(conn net.Conn) {
+func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	defer func() {
-		heartbeatMu.Lock()
-		delete(heartbeatClients, conn)
-		heartbeatMu.Unlock()
-
-		cameraClientsMu.Lock()
-		delete(cameraClients, conn)
-		cameraClientsMu.Unlock()
-
-		dispatchersMu.Lock()
-		delete(dispatchers, conn)
-		dispatchersMu.Unlock()
+		s.mu.Lock()
+		delete(s.heartbeatClients, conn)
+		delete(s.cameraClients, conn)
+		delete(s.dispatchers, conn)
+		s.mu.Unlock()
 	}()
 
 	reader := NewMessageReader(conn)
@@ -53,81 +53,77 @@ func handle(conn net.Conn) {
 			return
 		}
 
+		s.mu.Lock()
+
 		switch msg := message.(type) {
 		case WantHeartBeat:
-			heartbeatMu.Lock()
-			_, exists := heartbeatClients[conn]
-			heartbeatMu.Unlock()
-
+			_, exists := s.heartbeatClients[conn]
 			if exists {
+				s.mu.Unlock()
 				response, _ := Error{Msg: "Client is already receiving heartbeats"}.Encode()
 				conn.Write(response)
 				return
 			}
 			if msg.Interval > 0 {
-				go sendHeartBeat(conn, msg.Interval)
+				go s.sendHeartBeat(conn, msg.Interval)
 			}
-			continue
+
 		case IAmCamera:
-			cameraClientsMu.Lock()
-			_, exists := cameraClients[conn]
+			_, exists := s.cameraClients[conn]
 			if exists {
-				cameraClientsMu.Unlock()
+				s.mu.Unlock()
 				response, _ := Error{Msg: "Client is already identified as a camera"}.Encode()
 				conn.Write(response)
 				return
 			}
-			cameraClients[conn] = msg
-			cameraClientsMu.Unlock()
-			continue
-		case Plate:
-			cameraClientsMu.RLock()
-			camera, exists := cameraClients[conn]
-			cameraClientsMu.RUnlock()
+			s.cameraClients[conn] = msg
 
-			if exists {
-				snapshotsMu.Lock()
-				cameraPlateSnapshots[camera] = msg
-				snapshotsMu.Unlock()
-				go handlePlate(msg, camera)
+		case Plate:
+			camera, exists := s.cameraClients[conn]
+			if !exists {
+				s.mu.Unlock()
+				response, _ := Error{Msg: "Client must be identified as a camera to send a plate"}.Encode()
+				conn.Write(response)
 				continue
 			}
-			response, _ := Error{Msg: "Client must be identified as a camera to send a plate"}.Encode()
-			conn.Write(response)
-			continue
+			s.cameraPlateSnapshots[msg] = camera
+			s.handlePlate(msg, camera)
+			s.sendTickets()
+
 		case IAmDispatcher:
-			dispatchersMu.Lock()
-			_, exists := dispatchers[conn]
+			_, exists := s.dispatchers[conn]
 			if exists {
-				dispatchersMu.Unlock()
+				s.mu.Unlock()
 				response, _ := Error{Msg: "Client is already identified as a dispatcher"}.Encode()
 				conn.Write(response)
 				return
 			}
-			dispatchers[conn] = msg
-			dispatchersMu.Unlock()
-			go sendTickets()
-			continue
+			s.dispatchers[conn] = msg
+			s.sendTickets()
+
 		default:
+			s.mu.Unlock()
 			response, _ := Error{Msg: "Unknown message received from MessageReader"}.Encode()
 			conn.Write(response)
 			continue
 		}
+
+		s.mu.Unlock()
 	}
 }
 
-func sendHeartBeat(conn net.Conn, deciSeconds uint32) {
-	heartbeatMu.Lock()
-	heartbeatClients[conn] = struct{}{}
-	heartbeatMu.Unlock()
+func (s *Server) sendHeartBeat(conn net.Conn, deciSeconds uint32) {
+	s.mu.Lock()
+	s.heartbeatClients[conn] = struct{}{}
+	s.mu.Unlock()
 
 	interval := time.Duration(deciSeconds*100) * time.Millisecond
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	defer func() {
-		heartbeatMu.Lock()
-		delete(heartbeatClients, conn)
-		heartbeatMu.Unlock()
+		s.mu.Lock()
+		delete(s.heartbeatClients, conn)
+		s.mu.Unlock()
 	}()
 
 	for range ticker.C {
@@ -138,9 +134,9 @@ func sendHeartBeat(conn net.Conn, deciSeconds uint32) {
 	}
 }
 
-func handlePlate(currentPlate Plate, currentCamera IAmCamera) {
+func (s *Server) handlePlate(currentPlate Plate, currentCamera IAmCamera) {
 outerloop:
-	for previousCamera, previousCameraPlate := range cameraPlateSnapshots {
+	for previousCameraPlate, previousCamera := range s.cameraPlateSnapshots {
 		if previousCamera == currentCamera ||
 			previousCameraPlate.Plate != currentPlate.Plate ||
 			previousCamera.Road != currentCamera.Road {
@@ -150,10 +146,10 @@ outerloop:
 		currentDay := currentPlate.Timestamp / 86400
 		previousDay := previousCameraPlate.Timestamp / 86400
 
-		if _, exists := sentTickets[currentPlate.Plate]; exists {
-			for _, day := range sentTickets[currentPlate.Plate] {
+		if _, exists := s.sentTickets[currentPlate.Plate]; exists {
+			for _, day := range s.sentTickets[currentPlate.Plate] {
 				if day >= previousDay && day <= currentDay {
-					continue outerloop // Ticket already sent for this day and plate
+					continue outerloop
 				}
 			}
 		}
@@ -178,13 +174,11 @@ outerloop:
 		}
 
 		for day := previousDay; day <= currentDay; day++ {
-			sentTicketsMu.Lock()
-			defer sentTicketsMu.Unlock()
-			sentTickets[currentPlate.Plate] = append(sentTickets[currentPlate.Plate], day)
+			s.sentTickets[currentPlate.Plate] = append(s.sentTickets[currentPlate.Plate], day)
 		}
 
 		if currentCamera.Mile > previousCamera.Mile {
-			outgoingTickets = append(outgoingTickets, Ticket{
+			s.outgoingTickets = append(s.outgoingTickets, Ticket{
 				Plate:      currentPlate.Plate,
 				Road:       currentCamera.Road,
 				Mile1:      previousCamera.Mile,
@@ -194,7 +188,7 @@ outerloop:
 				Speed:      uint16(speedInMph) * 100,
 			})
 		} else {
-			outgoingTickets = append(outgoingTickets, Ticket{
+			s.outgoingTickets = append(s.outgoingTickets, Ticket{
 				Plate:      currentPlate.Plate,
 				Road:       currentCamera.Road,
 				Mile1:      currentCamera.Mile,
@@ -205,18 +199,18 @@ outerloop:
 			})
 		}
 
-		go sendTickets()
+		s.sendTickets()
 		break
 	}
 }
 
-func sendTickets() {
-	ticketsCopy := make([]Ticket, len(outgoingTickets))
-	copy(ticketsCopy, outgoingTickets)
+func (s *Server) sendTickets() {
+	ticketsCopy := make([]Ticket, len(s.outgoingTickets))
+	copy(ticketsCopy, s.outgoingTickets)
 
 ticketLoop:
 	for _, ticket := range ticketsCopy {
-		for dispatcherConn, dispatcher := range dispatchers {
+		for dispatcherConn, dispatcher := range s.dispatchers {
 			for _, dispatcherRoad := range dispatcher.Roads {
 				if dispatcherRoad == ticket.Road {
 					ticketBytes, err := ticket.Encode()
@@ -230,10 +224,9 @@ ticketLoop:
 						continue
 					}
 
-					// Remove ticket from original slice
-					for i, t := range outgoingTickets {
+					for i, t := range s.outgoingTickets {
 						if t == ticket {
-							outgoingTickets = append(outgoingTickets[:i], outgoingTickets[i+1:]...)
+							s.outgoingTickets = append(s.outgoingTickets[:i], s.outgoingTickets[i+1:]...)
 							continue ticketLoop
 						}
 					}

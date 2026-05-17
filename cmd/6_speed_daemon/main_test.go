@@ -2,23 +2,16 @@ package main
 
 import (
 	"TDMR87/go_protohackers/internal/server"
+	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
 
-func resetGlobalState() {
-	heartbeatClients = make(map[net.Conn]struct{})
-	dispatchers = make(map[net.Conn]IAmDispatcher)
-	cameraClients = make(map[net.Conn]IAmCamera)
-	cameraPlateSnapshots = make(map[IAmCamera]Plate)
-	sentTickets = make(map[string][]uint32)
-	outgoingTickets = make([]Ticket, 0)
-}
-
 func Test_WantHeartBeat_OnlyOnePerClientAllowed(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -45,8 +38,8 @@ func Test_WantHeartBeat_OnlyOnePerClientAllowed(t *testing.T) {
 }
 
 func Test_WantHeartBeat_SendsHeartBeats(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -87,8 +80,8 @@ func Test_WantHeartBeat_SendsHeartBeats(t *testing.T) {
 }
 
 func Test_WantHeartBeat_ZeroIntervalNoHeartBeats(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -114,8 +107,8 @@ func Test_WantHeartBeat_ZeroIntervalNoHeartBeats(t *testing.T) {
 }
 
 func Test_IAmCamera_RegistersSuccessfully(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -136,12 +129,14 @@ func Test_IAmCamera_RegistersSuccessfully(t *testing.T) {
 
 	// Check that the camera was registered
 	cameraRegistered := false
-	for _, camera := range cameraClients {
+	s.mu.Lock()
+	for _, camera := range s.cameraClients {
 		if camera == expectedCamera {
 			cameraRegistered = true
 			break
 		}
 	}
+	s.mu.Unlock()
 
 	if !cameraRegistered {
 		t.Fatal("Camera was not registered")
@@ -149,8 +144,8 @@ func Test_IAmCamera_RegistersSuccessfully(t *testing.T) {
 }
 
 func Test_IAmCamera_OnlyOnePerClientAllowed(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -177,8 +172,8 @@ func Test_IAmCamera_OnlyOnePerClientAllowed(t *testing.T) {
 }
 
 func Test_ClientMustBeACamera_ToSendPlate(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -205,8 +200,8 @@ func Test_ClientMustBeACamera_ToSendPlate(t *testing.T) {
 }
 
 func Test_SendTicket(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -232,7 +227,7 @@ func Test_SendTicket(t *testing.T) {
 	cameraTwoConn.Write(plate)
 	time.Sleep(100 * time.Millisecond)
 
-	if len(outgoingTickets) != 1 {
+	if len(s.outgoingTickets) != 1 {
 		t.Fatal("Expected speeding ticket to be outgoing, but it was not")
 	}
 
@@ -243,14 +238,14 @@ func Test_SendTicket(t *testing.T) {
 	dispatcherConn.Write(dispatcher.Encode())
 	time.Sleep(100 * time.Millisecond)
 
-	if len(outgoingTickets) != 0 {
+	if len(s.outgoingTickets) != 0 {
 		t.Fatal("Expected outgoing ticket to have been sent, but it was not sent")
 	}
 }
 
 func Test_IAmDispatcher_OnlyOnePerClientAllowed(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -278,8 +273,8 @@ func Test_IAmDispatcher_OnlyOnePerClientAllowed(t *testing.T) {
 }
 
 func Test_CompleteScenario_MultipleCamerasDispatchersAndPlates(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -350,8 +345,8 @@ func Test_CompleteScenario_MultipleCamerasDispatchersAndPlates(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Check that we have 2 outgoing tickets (SPEEDY1 and SPEEDY2)
-	if len(outgoingTickets) != 2 {
-		t.Fatalf("Expected 2 outgoing tickets, got %d. Tickets: %v", len(outgoingTickets), outgoingTickets)
+	if len(s.outgoingTickets) != 2 {
+		t.Fatalf("Expected 2 outgoing tickets, got %d. Tickets: %v", len(s.outgoingTickets), s.outgoingTickets)
 	}
 
 	// Dispatcher 1 handles Road 66
@@ -382,8 +377,8 @@ func Test_CompleteScenario_MultipleCamerasDispatchersAndPlates(t *testing.T) {
 
 	// Now only 1 ticket should remain (SPEEDY2)
 	time.Sleep(100 * time.Millisecond)
-	if len(outgoingTickets) != 1 {
-		t.Fatalf("Expected 1 remaining ticket, got %d", len(outgoingTickets))
+	if len(s.outgoingTickets) != 1 {
+		t.Fatalf("Expected 1 remaining ticket, got %d", len(s.outgoingTickets))
 	}
 
 	// Dispatcher 2 handles multiple roads including Road 123
@@ -414,8 +409,8 @@ func Test_CompleteScenario_MultipleCamerasDispatchersAndPlates(t *testing.T) {
 
 	// All tickets should now be sent
 	time.Sleep(100 * time.Millisecond)
-	if len(outgoingTickets) != 0 {
-		t.Fatalf("Expected all tickets to be sent, got %d remaining", len(outgoingTickets))
+	if len(s.outgoingTickets) != 0 {
+		t.Fatalf("Expected all tickets to be sent, got %d remaining", len(s.outgoingTickets))
 	}
 
 	// Test heartbeats alongside everything else
@@ -437,8 +432,8 @@ func Test_CompleteScenario_MultipleCamerasDispatchersAndPlates(t *testing.T) {
 }
 
 func Test_SingleCar_DispatcherConnectsAfterSpeeding(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -470,9 +465,9 @@ func Test_SingleCar_DispatcherConnectsAfterSpeeding(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify ticket was created
-	outgoingTicketsMu.Lock()
-	ticketCount := len(outgoingTickets)
-	outgoingTicketsMu.Unlock()
+	s.mu.Lock()
+	ticketCount := len(s.outgoingTickets)
+	s.mu.Unlock()
 
 	if ticketCount != 1 {
 		t.Fatalf("Expected 1 ticket to be created, got %d", ticketCount)
@@ -525,9 +520,9 @@ func Test_SingleCar_DispatcherConnectsAfterSpeeding(t *testing.T) {
 
 	// Verify ticket was removed from queue
 	time.Sleep(100 * time.Millisecond)
-	outgoingTicketsMu.Lock()
-	remainingTickets := len(outgoingTickets)
-	outgoingTicketsMu.Unlock()
+	s.mu.Lock()
+	remainingTickets := len(s.outgoingTickets)
+	s.mu.Unlock()
 
 	if remainingTickets != 0 {
 		t.Fatalf("Expected 0 remaining tickets, got %d", remainingTickets)
@@ -535,8 +530,8 @@ func Test_SingleCar_DispatcherConnectsAfterSpeeding(t *testing.T) {
 }
 
 func Test_SingleCar_ObservationsInReverseOrder(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -602,8 +597,8 @@ func Test_SingleCar_ObservationsInReverseOrder(t *testing.T) {
 }
 
 func Test_PreventDuplicateTicketsOnSameDay(t *testing.T) {
-	resetGlobalState()
-	listener, err := server.StartTcpListener(":0", handle)
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
 	if err != nil {
 		t.Fatal("Error starting server:", err)
 	}
@@ -700,5 +695,155 @@ func Test_PreventDuplicateTicketsOnSameDay(t *testing.T) {
 	}
 	if ticket3.Timestamp1 != 86400 {
 		t.Fatalf("Expected ticket from day 1, got timestamp %d", ticket3.Timestamp1)
+	}
+}
+
+func Test_TicketAcrossDayBoundary(t *testing.T) {
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
+	if err != nil {
+		t.Fatal("Error starting server:", err)
+	}
+	defer listener.Close()
+
+	cam1, _ := net.Dial("tcp", listener.Addr().String())
+	defer cam1.Close()
+	cam1.Write(IAmCamera{Road: 1, Mile: 0, Limit: 60}.Encode())
+
+	cam2, _ := net.Dial("tcp", listener.Addr().String())
+	defer cam2.Close()
+	cam2.Write(IAmCamera{Road: 1, Mile: 10, Limit: 60}.Encode())
+
+	time.Sleep(100 * time.Millisecond)
+
+	plate1, _ := Plate{Plate: "CAR", Timestamp: 86000}.Encode()
+	cam1.Write(plate1)
+	time.Sleep(50 * time.Millisecond)
+
+	// Timestamp 86401 = day 1 (different day from ts=86000 which is day 0).
+	// Distance=10mi, time=401s -> 89.8 mph > 60 limit.
+	// Verifies a ticket is correctly generated when observations span
+	// multiple days (the previous defer-in-loop deadlock is impossible
+	// with the single-mutex Server struct).
+	plate2, _ := Plate{Plate: "CAR", Timestamp: 86401}.Encode()
+	cam2.Write(plate2)
+
+	time.Sleep(300 * time.Millisecond)
+
+	s.mu.Lock()
+	ticketCount := len(s.outgoingTickets)
+	s.mu.Unlock()
+
+	if ticketCount == 0 {
+		t.Fatal("Expected ticket to be created (single-mutex Server struct should have fixed the defer-in-loop deadlock)")
+	}
+}
+
+func Test_ConcurrentObservations(t *testing.T) {
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
+	if err != nil {
+		t.Fatal("Error starting server:", err)
+	}
+	defer listener.Close()
+
+	cam1, _ := net.Dial("tcp", listener.Addr().String())
+	defer cam1.Close()
+	cam1.Write(IAmCamera{Road: 1, Mile: 0, Limit: 60}.Encode())
+
+	cam2, _ := net.Dial("tcp", listener.Addr().String())
+	defer cam2.Close()
+	cam2.Write(IAmCamera{Road: 1, Mile: 5, Limit: 60}.Encode())
+
+	cam3, _ := net.Dial("tcp", listener.Addr().String())
+	defer cam3.Close()
+	cam3.Write(IAmCamera{Road: 1, Mile: 10, Limit: 60}.Encode())
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Initial observations to establish snapshots
+	plate1, _ := Plate{Plate: "CAR1", Timestamp: 0}.Encode()
+	cam1.Write(plate1)
+	plate2, _ := Plate{Plate: "CAR2", Timestamp: 0}.Encode()
+	cam2.Write(plate2)
+	time.Sleep(50 * time.Millisecond)
+
+	// Fire observations concurrently to exercise the server.
+	var wg sync.WaitGroup
+	for i := range 10 {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			plate, _ := Plate{
+				Plate:     fmt.Sprintf("CAR%d", n),
+				Timestamp: uint32(300 + n),
+			}.Encode()
+			cam3.Write(plate)
+		}(i)
+	}
+	wg.Wait()
+	time.Sleep(500 * time.Millisecond)
+}
+
+func Test_SnapshotOverwriteMissesTicket(t *testing.T) {
+	s := NewServer()
+	listener, err := server.StartTcpListener(":0", s.handle)
+	if err != nil {
+		t.Fatal("Error starting server:", err)
+	}
+	defer listener.Close()
+
+	cam1, _ := net.Dial("tcp", listener.Addr().String())
+	defer cam1.Close()
+	cam1.Write(IAmCamera{Road: 1, Mile: 0, Limit: 60}.Encode())
+
+	cam2, _ := net.Dial("tcp", listener.Addr().String())
+	defer cam2.Close()
+	cam2.Write(IAmCamera{Road: 1, Mile: 10, Limit: 60}.Encode())
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Camera 1 observes CarA at ts=0 -> snapshot[{1,0,60}] = {CarA, 0}
+	plateA1, _ := Plate{Plate: "CarA", Timestamp: 0}.Encode()
+	cam1.Write(plateA1)
+	time.Sleep(50 * time.Millisecond)
+
+	// Camera 1 observes CarB at ts=1 -> OVERWRITES snapshot[{1,0,60}] = {CarB, 1}
+	// CarA's observation is now lost.
+	plateB1, _ := Plate{Plate: "CarB", Timestamp: 1}.Encode()
+	cam1.Write(plateB1)
+	time.Sleep(50 * time.Millisecond)
+
+	// Camera 2 observes CarA at ts=300. Speed = 10mi/300s*3600 = 120 mph > 60.
+	// But handlePlate won't find CarA in snapshots (it was overwritten by CarB),
+	// so the plate check filters it out. NO TICKET for CarA — MISSED TICKET BUG.
+	plateA2, _ := Plate{Plate: "CarA", Timestamp: 300}.Encode()
+	cam2.Write(plateA2)
+	time.Sleep(100 * time.Millisecond)
+
+	// Camera 2 observes CarB at ts=600. Speed = 10mi/599s*3600 = 60.1 mph > 60.
+	// Should find CarB's snapshot and generate a ticket.
+	plateB2, _ := Plate{Plate: "CarB", Timestamp: 600}.Encode()
+	cam2.Write(plateB2)
+	time.Sleep(100 * time.Millisecond)
+
+	s.mu.Lock()
+	carAFound := false
+	carBFound := false
+	for _, t := range s.outgoingTickets {
+		if t.Plate == "CarA" {
+			carAFound = true
+		}
+		if t.Plate == "CarB" {
+			carBFound = true
+		}
+	}
+	s.mu.Unlock()
+
+	if !carAFound {
+		t.Error("CarA should have a speeding ticket but its observation was overwritten by CarB at the same camera (snapshot map keyed by camera identity, not plate)")
+	}
+	if !carBFound {
+		t.Error("CarB should have a speeding ticket")
 	}
 }
