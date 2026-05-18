@@ -29,12 +29,16 @@ func (reader *MessageReader) NextMessage() (msg any, err error) {
 			}
 		}
 
-		var msg any
+		
+
 		var needMoreBytes bool
 		msgType := reader.buf[0]
 
 		switch msgType {
 		case Plate{}.Type():
+			if len(reader.buf) < 2 {
+				return nil, fmt.Errorf("A message of type Plate must have more than 1 byte")
+			}
 			strSize := int(reader.buf[1])
 			msgSizeInBytes := 2 + strSize + 4 // Type(1 byte) + Length(1 byte) + Plate length (bytes) + Timestamp(4 bytes)
 			msg, needMoreBytes, err = extractMessage(reader, msgSizeInBytes, Plate{}.Decode)
@@ -43,6 +47,9 @@ func (reader *MessageReader) NextMessage() (msg any, err error) {
 		case IAmCamera{}.Type():
 			msg, needMoreBytes, err = extractMessage(reader, IAmCamera{}.Size(), IAmCamera{}.Decode)
 		case IAmDispatcher{}.Type():
+			if len(reader.buf) < 2 {
+				return nil, fmt.Errorf("A message of type IAmDispatcher must have more than 1 byte")
+			}
 			numRoads := int(reader.buf[1])
 			msgSizeInBytes := 2 + (numRoads * 2) // Type(1 byte) + NumRoads(1 byte) + Roads (2 bytes each)
 			msg, needMoreBytes, err = extractMessage(reader, msgSizeInBytes, IAmDispatcher{}.Decode)
@@ -55,7 +62,10 @@ func (reader *MessageReader) NextMessage() (msg any, err error) {
 		}
 
 		if needMoreBytes {
-			reader.fillBuffer()
+			err := reader.fillBuffer()
+			if err != nil {
+				return nil, err
+			}
 			continue
 		}
 

@@ -1,0 +1,49 @@
+services:
+  0_smoketest:
+    build:
+      context: .
+      dockerfile: cmd/0_smoketest/Dockerfile
+    ports:
+      - "8081:8080"
+
+  1_primetime:
+    build:
+      context: .
+      dockerfile: cmd/1_primetime/Dockerfile
+    ports:
+      - "8082:8080"
+
+  2_means_to_an_end:
+    build:
+      context: .
+      dockerfile: cmd/2_means_to_an_end/Dockerfile
+    ports:
+      - "8083:8080"
+
+  3_budget_chat:
+    build:
+      context: .
+      dockerfile: cmd/3_budget_chat/Dockerfile
+    ports:
+      - "8084:8080"
+
+  4_unusual_database_program:
+    build:
+      context: .
+      dockerfile: cmd/4_unusual_database_program/Dockerfile
+    ports:
+      - "8085:8080"
+
+  5_mob_in_the_middle:
+    build:
+      context: .
+      dockerfile: cmd/5_mob_in_the_middle/Dockerfile
+    ports:
+      - "8086:8080"
+
+  6_speed_daemon:
+    build:
+      context: .
+      dockerfile: cmd/6_speed_daemon/Dockerfile
+    ports:
+      - "8087:8080"
